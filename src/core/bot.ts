@@ -210,6 +210,26 @@ export class LettaBot {
         console.log('[Bot] No transport process found');
       }
       
+      // Initialize session explicitly (so we can log timing/failures)
+      const initTimeoutMs = 15000;
+      const withTimeout = async <T>(promise: Promise<T>, label: string): Promise<T> => {
+        let timeoutId: NodeJS.Timeout;
+        const timeoutPromise = new Promise<T>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(`${label} timed out after ${initTimeoutMs}ms`));
+          }, initTimeoutMs);
+        });
+        try {
+          return await Promise.race([promise, timeoutPromise]);
+        } finally {
+          clearTimeout(timeoutId!);
+        }
+      };
+
+      console.log('[Bot] Initializing session...');
+      const initInfo = await withTimeout(session.initialize(), 'Session initialize');
+      console.log('[Bot] Session initialized:', initInfo);
+
       // Send message to agent with metadata envelope
       const formattedMessage = formatMessageEnvelope(msg);
       console.log('[Bot] Formatted message:', formattedMessage.slice(0, 200));
@@ -218,7 +238,7 @@ export class LettaBot {
       console.log('[Bot] Agent ID:', this.store.agentId || '(new agent)');
       console.log('[Bot] Sending message to session...');
       try {
-        await session.send(formattedMessage);
+        await withTimeout(session.send(formattedMessage), 'Session send');
         console.log('[Bot] Message sent successfully, starting stream...');
       } catch (sendError) {
         console.error('[Bot] Error in session.send():', sendError);
