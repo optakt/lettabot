@@ -408,23 +408,53 @@ async function stepProviders(config: OnboardConfig, env: Record<string, string>)
     if (p.isCancel(providerKey)) { p.cancel('Setup cancelled'); process.exit(0); }
     
     if (providerKey) {
-      // Create provider via Letta API
+      // Create or update provider via Letta API
       const spinner = p.spinner();
       spinner.start(`Connecting ${provider.displayName}...`);
       
       try {
-        const response = await fetch('https://api.letta.com/v1/providers', {
-          method: 'POST',
+        // First check if provider already exists
+        const listResponse = await fetch('https://api.letta.com/v1/providers', {
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`,
           },
-          body: JSON.stringify({
-            name: provider.name,
-            provider_type: provider.providerType,
-            api_key: providerKey,
-          }),
         });
+        
+        let existingProvider: { id: string; name: string } | undefined;
+        if (listResponse.ok) {
+          const providers = await listResponse.json() as Array<{ id: string; name: string }>;
+          existingProvider = providers.find(p => p.name === provider.name);
+        }
+        
+        let response: Response;
+        if (existingProvider) {
+          // Update existing provider
+          response = await fetch(`https://api.letta.com/v1/providers/${existingProvider.id}`, {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              api_key: providerKey,
+            }),
+          });
+        } else {
+          // Create new provider
+          response = await fetch('https://api.letta.com/v1/providers', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              name: provider.name,
+              provider_type: provider.providerType,
+              api_key: providerKey,
+            }),
+          });
+        }
         
         if (response.ok) {
           spinner.stop(`Connected ${provider.displayName}`);
