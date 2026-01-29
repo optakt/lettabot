@@ -138,12 +138,14 @@ function formatTimestamp(date: Date, options: EnvelopeOptions): string {
 /**
  * Format a message with metadata envelope
  * 
- * Format: [Channel GroupName Sender Timestamp] Message
+ * Format: [Channel:ChatId Sender Timestamp] Message
+ * 
+ * The Channel:ChatId format allows the agent to reply using:
+ *   lettabot-message send --text "..." --channel telegram --chat 123456789
  * 
  * Examples:
- * - [Slack #general @cameron Monday, Jan 27, 4:30 PM PST] Hello!
- * - [WhatsApp Cameron Monday, Jan 27, 5:00 PM PST] Hi there
- * - [Signal Family Group +1 (555) 123-4567 Tuesday, Jan 28, 9:30 AM PST] Dinner at 7?
+ * - [telegram:123456789 Sarah Wednesday, Jan 28, 4:30 PM PST] Hello!
+ * - [slack:C1234567 @cameron Monday, Jan 27, 4:30 PM PST] Hello!
  */
 export function formatMessageEnvelope(
   msg: InboundMessage,
@@ -152,13 +154,8 @@ export function formatMessageEnvelope(
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const parts: string[] = [];
   
-  // Channel name with format hint
-  const formatHint = CHANNEL_FORMATS[msg.channel];
-  if (formatHint) {
-    parts.push(`${formatChannelName(msg.channel)} (${formatHint})`);
-  } else {
-    parts.push(formatChannelName(msg.channel));
-  }
+  // Channel:ChatId (for lettabot-message CLI)
+  parts.push(`${msg.channel}:${msg.chatId}`);
   
   // Group name (if group chat and enabled)
   if (opts.includeGroup !== false && msg.isGroup && msg.groupName?.trim()) {
@@ -182,5 +179,9 @@ export function formatMessageEnvelope(
   // Build envelope
   const envelope = `[${parts.join(' ')}]`;
   
-  return `${envelope} ${msg.text}`;
+  // Add format hint as a separate note (not cluttering the main envelope)
+  const formatHint = CHANNEL_FORMATS[msg.channel];
+  const hint = formatHint ? `\n(Format: ${formatHint})` : '';
+  
+  return `${envelope} ${msg.text}${hint}`;
 }
