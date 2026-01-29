@@ -1,6 +1,6 @@
 # LettaBot
 
-Your personal AI assistant that remembers everything across **Telegram, Slack, WhatsApp, and Signal**. Powered by [Letta Code](https://github.com/letta-ai/letta-code).
+Your personal AI assistant that remembers everything across **Telegram, Slack, WhatsApp, and Signal**. Powered by the [Letta Code SDK](https://github.com/letta-ai/letta-code-sdk).
 
 <img width="750" alt="lettabot-preview" src="https://github.com/user-attachments/assets/9f01b845-d5b0-447b-927d-ae15f9ec7511" />
 
@@ -113,12 +113,11 @@ At least one channel is required. Telegram is the easiest to start with.
 LettaBot is compatible with [skills.sh](https://skills.sh) and [Clawdhub](https://clawdhub.com/). 
 
 ```bash
-# Interactive search
-npm run skills:find
+# from Clawdhub
+npx molthub@latest install sonoscli
 
-# Install skill packs
+# from skills.sh
 npm run skills:add supabase/agent-skills
-npm run skills:add anthropics/skills
 ```
 
 Once you install a skill, you need to import it to your agent with `lettabot skills`.
@@ -227,6 +226,9 @@ lettabot destroy
 - [Slack Setup](docs/slack-setup.md)
 - [WhatsApp Setup](docs/whatsapp-setup.md)
 - [Signal Setup](docs/signal-setup.md)
+
+## Acknowledgement
+Some skills were adapted from [Moltbot](https://github.com/moltbot/moltbot). 
 
 ## License
 
