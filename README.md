@@ -19,7 +19,7 @@ Your personal AI assistant that remembers everything across **Telegram, Slack, W
 ### Prerequisites
 
 - Node.js 18+
-- A Letta API key from [app.letta.com](https://app.letta.com) (or [self-hosted](https://docs.letta.com/guides/docker/) Letta server)
+- A Letta API key from [app.letta.com](https://app.letta.com) (or a running [Letta Docker server](https://docs.letta.com/guides/docker/))
 - A Telegram bot token from [@BotFather](https://t.me/BotFather)
 
 ### Install
@@ -37,8 +37,8 @@ npm run build
 npm link
 ```
 
-#### Optional: self-hosted docker server 
-You can use `lettabot` with a self-hosted Letta server with: 
+#### Optional: Run a Letta Docker server 
+You can use `lettabot` with a Docker server with: 
 ```
 docker run \
   -v ~/.letta/.persist/pgdata:/var/lib/postgresql/data \
@@ -46,7 +46,7 @@ docker run \
   -e OPENAI_API_KEY="your_openai_api_key" \
   letta/letta:latest
 ```
-See the [documentation](https://docs.letta.com/guides/docker/) for more details on self-hosting and model configuration. 
+See the [documentation](https://docs.letta.com/guides/docker/) for more details on running with Docker. 
 
 ### Setup
 
@@ -55,11 +55,6 @@ Run the interactive onboarding wizard:
 ```bash
 lettabot onboard
 ```
-
-This will guide you through:
-1. Setting up your Letta API key (or self-hosted URL) 
-2. Configuring Telegram (and optionally Slack, WhatsApp, Signal)
-3. Enabling heartbeat and scheduled tasks
 
 ### Run
 
@@ -80,7 +75,8 @@ That's it! Message your bot on Telegram.
 | `lettabot destroy` | Delete all local data and start fresh |
 | `lettabot help` | Show help |
 
-## Multi-Channel Architecture
+
+## Channel Setup
 
 LettaBot uses a **single agent with a single conversation** across all channels:
 
@@ -96,8 +92,6 @@ WhatsApp ──┘
 - Pick it up on WhatsApp
 - The agent remembers everything!
 
-## Channel Setup
-
 | Channel | Guide | Requirements |
 |---------|-------|--------------|
 | Telegram | [Setup Guide](docs/getting-started.md) | Bot token from @BotFather |
@@ -106,56 +100,6 @@ WhatsApp ──┘
 | Signal | [Setup Guide](docs/signal-setup.md) | signal-cli + phone number |
 
 At least one channel is required. Telegram is the easiest to start with.
-
-## Configuration
-
-### Environment Variables (.env)
-
-```bash
-# if using the Letta API
-LETTA_API_KEY=your_letta_api_key
-# if using the self-hosted Docker image
-LETTA_BASE_URL=http://localhost:8283
-
-# Telegram (easiest to start)
-TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-TELEGRAM_DM_POLICY=pairing  # pairing, allowlist, or open
-
-# Slack (optional)
-SLACK_BOT_TOKEN=xoxb-your-bot-token
-SLACK_APP_TOKEN=xapp-your-app-token
-
-# WhatsApp (optional)
-WHATSAPP_ENABLED=true
-
-# Signal (optional)
-SIGNAL_PHONE_NUMBER=+1XXXXXXXXXX
-
-# Scheduling (optional)
-CRON_ENABLED=true
-
-# Heartbeat - periodic check-ins (optional)
-HEARTBEAT_INTERVAL_MIN=30
-```
-
-### Full Configuration Reference
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `LETTA_API_KEY` | Yes | API key from app.letta.com |
-| `TELEGRAM_BOT_TOKEN` | * | Bot token from @BotFather |
-| `TELEGRAM_DM_POLICY` | No | pairing/allowlist/open (default: pairing) |
-| `TELEGRAM_ALLOWED_USERS` | No | Comma-separated Telegram user IDs |
-| `SLACK_BOT_TOKEN` | * | Slack bot token (xoxb-...) |
-| `SLACK_APP_TOKEN` | * | Slack app token (xapp-...) |
-| `WHATSAPP_ENABLED` | No | Set to `true` to enable WhatsApp |
-| `SIGNAL_PHONE_NUMBER` | * | Phone number registered with signal-cli |
-| `WORKING_DIR` | No | Agent workspace (default: `/tmp/lettabot`) |
-| `CRON_ENABLED` | No | Enable scheduled tasks |
-| `HEARTBEAT_INTERVAL_MIN` | No | Heartbeat interval in minutes (e.g., `30`) |
-| `HEARTBEAT_TARGET` | No | Where to deliver (e.g., `telegram:123456789`) |
-
-\* At least one channel must be configured
 
 ## Bot Commands
 
@@ -166,8 +110,18 @@ HEARTBEAT_INTERVAL_MIN=30
 | `/heartbeat` | Manually trigger a heartbeat check-in |
 
 ## Skills
+LettaBot is compatible with [skills.sh](https://skills.sh) and [Clawdhub](https://clawdhub.com/). 
 
-LettaBot supports skills that extend the agent's capabilities.
+```bash
+# Interactive search
+npm run skills:find
+
+# Install skill packs
+npm run skills:add supabase/agent-skills
+npm run skills:add anthropics/skills
+```
+
+Once you install a skill, you need to import it to your agent with `lettabot skills`.
 
 ### View Skills
 
@@ -197,57 +151,6 @@ Some skills are automatically enabled based on your configuration:
 |---------|--------|----------------|
 | Scheduling | `CRON_ENABLED=true` | `scheduling` |
 | Gmail | `GMAIL_ACCOUNT=...` | `gog`, `google` |
-
-### Install from skills.sh
-
-LettaBot is compatible with [skills.sh](https://skills.sh):
-
-```bash
-# Interactive search
-npm run skills:find
-
-# Install skill packs
-npm run skills:add supabase/agent-skills
-npm run skills:add anthropics/skills
-```
-
-## Heartbeat & Scheduling
-
-### Heartbeat
-
-LettaBot can periodically check in with you:
-
-```bash
-HEARTBEAT_INTERVAL_MIN=30
-```
-
-**Silent Mode**: During heartbeats, the agent's text output is NOT automatically sent to you. If the agent wants to contact you, it uses the `lettabot-message` CLI:
-
-```bash
-lettabot-message send --text "Hey, just checking in!"
-```
-
-This prevents spam - the agent only messages you when there's something worth saying.
-
-### Scheduling
-
-When `CRON_ENABLED=true`, the agent can create scheduled tasks:
-
-**One-off reminders:**
-```bash
-lettabot-schedule create \
-  --name "Standup" \
-  --at "2026-01-28T20:15:00Z" \
-  --message "Time for standup!"
-```
-
-**Recurring schedules:**
-```bash
-lettabot-schedule create \
-  --name "Morning Briefing" \
-  --schedule "0 8 * * *" \
-  --message "Good morning! What's on today's agenda?"
-```
 
 ## Security
 
@@ -289,14 +192,6 @@ npm run build
 lettabot server
 ```
 
-### Local Letta Server
-
-To use a local Letta server instead of Letta Cloud:
-
-```bash
-LETTA_BASE_URL=http://localhost:8283 lettabot server
-```
-
 ## Troubleshooting
 
 ### WhatsApp
@@ -323,8 +218,7 @@ SIGNAL_HTTP_PORT=8091
 **Agent not responding**
 Delete the agent store to create a fresh agent:
 ```bash
-rm lettabot-agent.json
-lettabot server
+lettabot destroy 
 ```
 
 ## Documentation
