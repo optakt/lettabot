@@ -12,7 +12,7 @@ const WORKING_DIR = process.env.WORKING_DIR || '/tmp/lettabot';
 const TARGET_DIR = join(WORKING_DIR, '.skills');
 
 // Skill source directories
-const CLAWDHUB_DIR = join(HOME, 'clawd', 'skills');      // ~/clawd/skills (ClawdHub)
+const CLAWDHUB_DIR = join(HOME, '.letta', 'skills');     // ~/.letta/skills (ClawdHub)
 const VERCEL_DIR = join(HOME, '.agents', 'skills');      // ~/.agents/skills (Vercel)
 
 interface SkillInfo {
@@ -124,7 +124,7 @@ export async function runSkillsSync(): Promise<void> {
   
   // Add ClawdHub skills section
   if (hasClawdhub) {
-    options.push({ value: '__header_clawdhub__', label: '── ClawdHub Skills ── (~/clawd/skills)', hint: '' });
+    options.push({ value: '__header_clawdhub__', label: '── ClawdHub Skills ── (~/.letta/skills)', hint: '' });
     for (const skill of skills.filter(s => s.source === 'clawdhub')) {
       const desc = skill.description || '';
       options.push({
