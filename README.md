@@ -64,6 +64,32 @@ lettabot server
 
 That's it! Message your bot on Telegram.
 
+## Skills
+LettaBot is compatible with [skills.sh](https://skills.sh) and [Clawdhub](https://clawdhub.com/). 
+
+```bash
+# from Clawdhub
+npx molthub@latest install sonoscli
+
+# from skills.sh
+npm run skills:add supabase/agent-skills
+
+# connect to LettaBot
+lettabot skills
+
+◆  Enable skills (space=toggle, enter=confirm):
+│  ◻ ── ClawdHub Skills ── (~/clawd/skills)
+│  ◻ 🦞 sonoscli
+│  ◻ ── Vercel Skills ── (~/.agents/skills)
+│  ◻ 🔼 supabase/agent-skills
+│  ◻ ── Built-in Skills ──
+│  ◻ 📦 1password
+│  ◻ ...
+
+# View LettaBot skills
+lettabot skills status
+```
+
 ## CLI Commands
 
 | Command | Description |
@@ -114,40 +140,6 @@ Any LettaBot agent can also be directly chatted with through [Letta Code](https:
 ```sh
 letta --agent <agent_id>
 ```
-
-## Skills
-LettaBot is compatible with [skills.sh](https://skills.sh) and [Clawdhub](https://clawdhub.com/). 
-
-```bash
-# from Clawdhub
-npx molthub@latest install sonoscli
-
-# from skills.sh
-npm run skills:add supabase/agent-skills
-```
-
-Once you install a skill, you need to import it to your agent with `lettabot skills`.
-
-### View Skills
-
-```bash
-lettabot skills status
-```
-
-Shows enabled skills and skills available to import:
-
-```
-Enabled (3):
-  ✓ gog
-  ✓ google
-  ✓ scheduling
-
-Available to import (20):
-  obsidian
-  weather
-  ...
-```
-
 
 ## Security
 
