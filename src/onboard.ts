@@ -9,9 +9,6 @@ import * as p from '@clack/prompts';
 import { saveConfig, syncProviders } from './config/index.js';
 import type { LettaBotConfig, ProviderConfig } from './config/types.js';
 
-const ENV_PATH = resolve(process.cwd(), '.env');
-const ENV_EXAMPLE_PATH = resolve(process.cwd(), '.env.example');
-
 // ============================================================================
 // Config Types
 // ============================================================================
@@ -44,60 +41,6 @@ interface OnboardConfig {
   // Features
   heartbeat: { enabled: boolean; interval?: string };
   cron: boolean;
-}
-
-// ============================================================================
-// Env Helpers
-// ============================================================================
-
-function loadEnv(): Record<string, string> {
-  const env: Record<string, string> = {};
-  if (existsSync(ENV_PATH)) {
-    const content = readFileSync(ENV_PATH, 'utf-8');
-    for (const line of content.split('\n')) {
-      if (line.startsWith('#') || !line.includes('=')) continue;
-      const [key, ...valueParts] = line.split('=');
-      env[key.trim()] = valueParts.join('=').trim();
-    }
-  }
-  return env;
-}
-
-function saveEnv(env: Record<string, string>): void {
-  // Start with .env.example as template, fall back to existing .env if example doesn't exist
-  let content = '';
-  if (existsSync(ENV_EXAMPLE_PATH)) {
-    content = readFileSync(ENV_EXAMPLE_PATH, 'utf-8');
-  } else if (existsSync(ENV_PATH)) {
-    content = readFileSync(ENV_PATH, 'utf-8');
-  }
-  
-  // Track which keys we've seen in the template to detect deletions
-  const keysInTemplate = new Set<string>();
-  for (const line of content.split('\n')) {
-    const match = line.match(/^#?\s*(\w+)=/);
-    if (match) keysInTemplate.add(match[1]);
-  }
-  
-  // Update or add keys that exist in env
-  for (const [key, value] of Object.entries(env)) {
-    const regex = new RegExp(`^#?\\s*${key}=.*$`, 'm');
-    if (regex.test(content)) {
-      content = content.replace(regex, `${key}=${value}`);
-    } else {
-      content += `\n${key}=${value}`;
-    }
-  }
-  
-  // Comment out keys that were in template but deleted from env
-  for (const key of keysInTemplate) {
-    if (!(key in env)) {
-      const regex = new RegExp(`^(${key}=.*)$`, 'm');
-      content = content.replace(regex, '# $1');
-    }
-  }
-  
-  writeFileSync(ENV_PATH, content);
 }
 
 const isPlaceholder = (val?: string) => !val || /^(your_|sk-\.\.\.|placeholder|example)/i.test(val);
@@ -859,12 +802,13 @@ async function reviewLoop(config: OnboardConfig, env: Record<string, string>): P
 // ============================================================================
 
 export async function onboard(): Promise<void> {
-  const env = loadEnv();
+  // Temporary storage for wizard values (no longer uses .env)
+  const env: Record<string, string> = {};
   
   p.intro('🤖 LettaBot Setup');
   
   // Show server info
-  const baseUrl = env.LETTA_BASE_URL || process.env.LETTA_BASE_URL || 'https://api.letta.com';
+  const baseUrl = process.env.LETTA_BASE_URL || 'https://api.letta.com';
   const isLocal = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1');
   p.note(`${baseUrl}\n${isLocal ? 'Local Docker' : 'Letta Cloud'}`, 'Server');
   

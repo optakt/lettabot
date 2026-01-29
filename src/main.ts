@@ -5,9 +5,6 @@
  * Chat continues seamlessly between Telegram, Slack, and WhatsApp.
  */
 
-// Load .env first for backwards compatibility
-import 'dotenv/config';
-
 import { createServer } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
