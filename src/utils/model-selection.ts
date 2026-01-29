@@ -24,25 +24,26 @@ export interface ModelInfo {
 /**
  * Get billing tier from Letta API
  * Uses /v1/metadata/balance endpoint (same as letta-code)
+ * 
+ * @param apiKey - The API key to use
+ * @param isSelfHosted - If true, skip billing check (self-hosted has no tiers)
  */
-export async function getBillingTier(apiKey?: string): Promise<string | null> {
+export async function getBillingTier(apiKey?: string, isSelfHosted?: boolean): Promise<string | null> {
   try {
-    const baseUrl = process.env.LETTA_BASE_URL || 'https://api.letta.com';
-    const key = apiKey || process.env.LETTA_API_KEY;
-    
     // Self-hosted servers don't have billing tiers
-    if (baseUrl !== 'https://api.letta.com') {
+    if (isSelfHosted) {
       return null;
     }
     
-    if (!key) {
+    if (!apiKey) {
       return 'free';
     }
     
-    const response = await fetch(`${baseUrl}/v1/metadata/balance`, {
+    // Always use Letta Cloud for billing check (not process.env.LETTA_BASE_URL)
+    const response = await fetch('https://api.letta.com/v1/metadata/balance', {
       headers: { 
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${key}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
     });
     
