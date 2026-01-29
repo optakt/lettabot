@@ -190,19 +190,37 @@ export class LettaBot {
       console.log(`[Bot] Session _agentId:`, (session as any)._agentId);
       console.log(`[Bot] Session options.permissionMode:`, (session as any).options?.permissionMode);
       
-      // Hook into transport errors
+      // Hook into transport errors and stdout
       const transport = (session as any).transport;
       if (transport?.process) {
+        console.log('[Bot] Transport process PID:', transport.process.pid);
+        transport.process.stdout?.on('data', (data: Buffer) => {
+          console.log('[Bot] CLI stdout:', data.toString().slice(0, 500));
+        });
         transport.process.stderr?.on('data', (data: Buffer) => {
           console.error('[Bot] CLI stderr:', data.toString());
         });
+        transport.process.on('exit', (code: number) => {
+          console.log('[Bot] CLI process exited with code:', code);
+        });
+        transport.process.on('error', (err: Error) => {
+          console.error('[Bot] CLI process error:', err);
+        });
+      } else {
+        console.log('[Bot] No transport process found');
       }
       
       // Send message to agent with metadata envelope
       const formattedMessage = formatMessageEnvelope(msg);
-      console.log('[Bot] Sending message...');
-      await session.send(formattedMessage);
-      console.log('[Bot] Message sent, starting stream...');
+      console.log('[Bot] Formatted message:', formattedMessage.slice(0, 200));
+      console.log('[Bot] Sending message to session...');
+      try {
+        await session.send(formattedMessage);
+        console.log('[Bot] Message sent successfully, starting stream...');
+      } catch (sendError) {
+        console.error('[Bot] Error in session.send():', sendError);
+        throw sendError;
+      }
       
       // Stream response
       let response = '';
