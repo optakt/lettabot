@@ -211,7 +211,11 @@ export class LettaBot {
       }
       
       // Initialize session explicitly (so we can log timing/failures)
-      const initTimeoutMs = 15000;
+      console.log('[Bot] About to initialize session...');
+      console.log('[Bot] LETTA_API_KEY in env:', process.env.LETTA_API_KEY ? `${process.env.LETTA_API_KEY.slice(0, 30)}...` : 'NOT SET');
+      console.log('[Bot] LETTA_CLI_PATH:', process.env.LETTA_CLI_PATH || 'not set (will use default)');
+      
+      const initTimeoutMs = 30000; // Increased to 30s
       const withTimeout = async <T>(promise: Promise<T>, label: string): Promise<T> => {
         let timeoutId: NodeJS.Timeout;
         const timeoutPromise = new Promise<T>((_, reject) => {
