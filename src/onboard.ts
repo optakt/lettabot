@@ -6,6 +6,8 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import * as p from '@clack/prompts';
+import { saveConfig, syncProviders } from './config/index.js';
+import type { LettaBotConfig, ProviderConfig } from './config/types.js';
 
 const ENV_PATH = resolve(process.cwd(), '.env');
 const ENV_EXAMPLE_PATH = resolve(process.cwd(), '.env.example');
@@ -1042,9 +1044,90 @@ export async function onboard(): Promise<void> {
   
   p.note(summary, 'Configuration Summary');
   
-  // Save
+  // Convert to YAML config
+  const yamlConfig: LettaBotConfig = {
+    server: {
+      mode: config.authMethod === 'selfhosted' ? 'selfhosted' : 'cloud',
+      ...(config.authMethod === 'selfhosted' && config.baseUrl ? { baseUrl: config.baseUrl } : {}),
+      ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+    },
+    agent: {
+      name: config.agentName || 'LettaBot',
+      model: config.model || 'zai/glm-4.7',
+      ...(config.agentId ? { id: config.agentId } : {}),
+    },
+    channels: {
+      ...(config.telegram.enabled ? {
+        telegram: {
+          enabled: true,
+          token: config.telegram.token,
+          dmPolicy: config.telegram.dmPolicy,
+          allowedUsers: config.telegram.allowedUsers,
+        }
+      } : {}),
+      ...(config.slack.enabled ? {
+        slack: {
+          enabled: true,
+          appToken: config.slack.appToken,
+          botToken: config.slack.botToken,
+          allowedUsers: config.slack.allowedUsers,
+        }
+      } : {}),
+      ...(config.whatsapp.enabled ? {
+        whatsapp: {
+          enabled: true,
+          selfChat: config.whatsapp.selfChat,
+          dmPolicy: config.whatsapp.dmPolicy,
+          allowedUsers: config.whatsapp.allowedUsers,
+        }
+      } : {}),
+      ...(config.signal.enabled ? {
+        signal: {
+          enabled: true,
+          phone: config.signal.phone,
+          dmPolicy: config.signal.dmPolicy,
+          allowedUsers: config.signal.allowedUsers,
+        }
+      } : {}),
+    },
+    features: {
+      cron: config.cron,
+      heartbeat: {
+        enabled: config.heartbeat.enabled,
+        intervalMin: config.heartbeat.interval ? parseInt(config.heartbeat.interval) : undefined,
+      },
+    },
+  };
+  
+  // Add BYOK providers if configured
+  if (config.providers && config.providers.length > 0) {
+    yamlConfig.providers = config.providers.map(p => ({
+      id: p.id,
+      name: p.name,
+      type: p.id, // id is the type (anthropic, openai, etc.)
+      apiKey: p.apiKey,
+    }));
+  }
+  
+  // Save YAML config
+  const configPath = resolve(process.cwd(), 'lettabot.yaml');
+  saveConfig(yamlConfig, configPath);
+  p.log.success('Configuration saved to lettabot.yaml');
+  
+  // Sync BYOK providers to Letta Cloud
+  if (yamlConfig.providers && yamlConfig.providers.length > 0 && yamlConfig.server.mode === 'cloud') {
+    const spinner = p.spinner();
+    spinner.start('Syncing BYOK providers to Letta Cloud...');
+    try {
+      await syncProviders(yamlConfig);
+      spinner.stop('BYOK providers synced');
+    } catch (err) {
+      spinner.stop('Failed to sync providers (will retry on startup)');
+    }
+  }
+  
+  // Also save .env for backwards compatibility
   saveEnv(env);
-  p.log.success('Configuration saved to .env');
   
   // Save agent ID with server URL
   if (config.agentId) {

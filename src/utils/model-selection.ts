@@ -174,8 +174,8 @@ export async function buildModelOptions(options?: {
   // Add custom option
   result.push({ 
     value: '__custom__', 
-    label: 'Custom model', 
-    hint: 'Enter handle: provider/model-name' 
+    label: 'Other (specify handle)', 
+    hint: 'e.g. anthropic/claude-sonnet-4-5-20250929' 
   });
   
   return result;
@@ -206,8 +206,8 @@ async function buildServerModelOptions(): Promise<Array<{ value: string; label: 
   // Add custom option
   result.push({ 
     value: '__custom__', 
-    label: 'Custom model', 
-    hint: 'Enter handle: provider/model-name' 
+    label: 'Other (specify handle)', 
+    hint: 'e.g. anthropic/claude-sonnet-4-5-20250929' 
   });
   
   return result;
