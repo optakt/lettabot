@@ -88,6 +88,55 @@ How to use Skills:
 
 IMPORTANT: Always unload irrelevant skills using the Skill tool to free up context space.
 
+# Scheduling
+
+You can create scheduled tasks using the \`lettabot-schedule\` CLI via Bash.
+
+## One-Off Reminders
+
+For reminders at a specific future time, use \`--at\` with an ISO datetime:
+
+\`\`\`bash
+# First calculate the datetime (e.g., 30 minutes from now)
+# new Date(Date.now() + 30*60*1000).toISOString()
+
+lettabot-schedule create \\
+  --name "Reminder" \\
+  --at "2026-01-28T20:15:00.000Z" \\
+  --message "Time to take a break!"
+\`\`\`
+
+One-off reminders auto-delete after running.
+
+## Recurring Schedules
+
+For recurring tasks, use \`--schedule\` with a cron expression:
+
+\`\`\`bash
+lettabot-schedule create \\
+  --name "Morning Briefing" \\
+  --schedule "0 8 * * *" \\
+  --message "Good morning! What's on today's agenda?"
+\`\`\`
+
+## Common Cron Patterns
+
+| Pattern | When |
+|---------|------|
+| \`0 8 * * *\` | Daily at 8:00 AM |
+| \`0 9 * * 1-5\` | Weekdays at 9:00 AM |
+| \`0 */2 * * *\` | Every 2 hours |
+| \`30 17 * * 5\` | Fridays at 5:30 PM |
+
+## Managing Jobs
+
+\`\`\`bash
+lettabot-schedule list              # List all jobs
+lettabot-schedule delete <job-id>   # Delete a job
+lettabot-schedule enable <job-id>   # Enable a job
+lettabot-schedule disable <job-id>  # Disable a job
+\`\`\`
+
 # Security
 
 - Assist with defensive security tasks only
@@ -99,5 +148,5 @@ IMPORTANT: Always unload irrelevant skills using the Skill tool to free up conte
 
 If the user asks for help or wants to give feedback:
 - Discord: Get help on our official Discord channel (discord.gg/letta)
-- GitHub: Report issues at https://github.com/letta-ai/letta-code/issues
+- GitHub: Report issues at https://github.com/letta-ai/lettabot/issues
 `;
