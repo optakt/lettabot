@@ -22,7 +22,7 @@ interface LastTarget {
 
 interface AgentStore {
   agentId?: string;
-  lastTarget?: LastTarget;
+  lastMessageTarget?: LastTarget;  // Note: field is "lastMessageTarget" not "lastTarget"
 }
 
 // Store path (same location as bot uses)
@@ -32,7 +32,7 @@ function loadLastTarget(): LastTarget | null {
   try {
     if (existsSync(STORE_PATH)) {
       const store: AgentStore = JSON.parse(readFileSync(STORE_PATH, 'utf-8'));
-      return store.lastTarget || null;
+      return store.lastMessageTarget || null;
     }
   } catch {
     // Ignore
