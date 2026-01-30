@@ -7,7 +7,17 @@
 
 import type { InboundMessage } from './types.js';
 
-
+/**
+ * Channel format hints - tells the agent what formatting syntax to use
+ * Each channel has different markdown support - hints help agent format appropriately.
+ */
+const CHANNEL_FORMATS: Record<string, string> = {
+  slack: 'mrkdwn: *bold* _italic_ `code` - NO: headers, tables',
+  discord: '**bold** *italic* `code` [links](url) ```code blocks``` - NO: headers, tables',
+  telegram: 'MarkdownV2: *bold* _italic_ `code` [links](url) - NO: headers, tables',
+  whatsapp: '*bold* _italic_ `code` - NO: headers, code fences, links, tables',
+  signal: 'ONLY: *bold* _italic_ `code` - NO: headers, code fences, links, quotes, tables',
+};
 
 export interface EnvelopeOptions {
   timezone?: 'local' | 'utc' | string;  // IANA timezone or 'local'/'utc'
@@ -56,6 +66,10 @@ function formatSender(msg: InboundMessage): string {
   switch (msg.channel) {
     case 'slack':
       // Add @ prefix for Slack usernames/IDs
+      return msg.userHandle ? `@${msg.userHandle}` : `@${msg.userId}`;
+
+    case 'discord':
+      // Add @ prefix for Discord usernames/IDs
       return msg.userHandle ? `@${msg.userHandle}` : `@${msg.userId}`;
     
     case 'whatsapp':
@@ -129,14 +143,14 @@ function formatTimestamp(date: Date, options: EnvelopeOptions): string {
 /**
  * Format a message with metadata envelope
  * 
- * Format: [Channel:ChatId Sender Timestamp] Message
+ * Format: [Channel:ChatId msg:MessageId Sender Timestamp] Message
  * 
  * The Channel:ChatId format allows the agent to reply using:
  *   lettabot-message send --text "..." --channel telegram --chat 123456789
  * 
  * Examples:
- * - [telegram:123456789 Sarah Wednesday, Jan 28, 4:30 PM PST] Hello!
- * - [slack:C1234567 @cameron Monday, Jan 27, 4:30 PM PST] Hello!
+ * - [telegram:123456789 msg:123 Sarah Wednesday, Jan 28, 4:30 PM PST] Hello!
+ * - [slack:C1234567 msg:1737685.1234 @cameron Monday, Jan 27, 4:30 PM PST] Hello!
  */
 export function formatMessageEnvelope(
   msg: InboundMessage,
@@ -147,11 +161,15 @@ export function formatMessageEnvelope(
   
   // Channel:ChatId (for lettabot-message CLI)
   parts.push(`${msg.channel}:${msg.chatId}`);
+
+  if (msg.messageId) {
+    parts.push(`msg:${msg.messageId}`);
+  }
   
   // Group name (if group chat and enabled)
   if (opts.includeGroup !== false && msg.isGroup && msg.groupName?.trim()) {
-    // Format group name with # for Slack channels
-    if (msg.channel === 'slack' && !msg.groupName.startsWith('#')) {
+    // Format group name with # for Slack/Discord channels
+    if ((msg.channel === 'slack' || msg.channel === 'discord') && !msg.groupName.startsWith('#')) {
       parts.push(`#${msg.groupName}`);
     } else {
       parts.push(msg.groupName);
@@ -170,6 +188,9 @@ export function formatMessageEnvelope(
   // Build envelope
   const envelope = `[${parts.join(' ')}]`;
   
-  // Add format hint as a separate note (not cluttering the main envelope)
-  return `${envelope} ${msg.text}`;
+  // Add format hint so agent knows what formatting syntax to use
+  const formatHint = CHANNEL_FORMATS[msg.channel];
+  const hint = formatHint ? `\n(Format: ${formatHint})` : '';
+  
+  return `${envelope} ${msg.text}${hint}`;
 }

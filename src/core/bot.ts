@@ -156,6 +156,7 @@ export class LettaBot {
     this.store.lastMessageTarget = {
       channel: msg.channel,
       chatId: msg.chatId,
+      messageId: msg.messageId,
       updatedAt: new Date().toISOString(),
     };
     
@@ -164,11 +165,11 @@ export class LettaBot {
     
     // Create or resume session
     let session: Session;
+    // Base options for all sessions (model only included for new agents)
     const baseOptions = {
       permissionMode: 'bypassPermissions' as const,
       allowedTools: this.config.allowedTools,
       cwd: this.config.workingDir,
-      model: this.config.model,
       systemPrompt: SYSTEM_PROMPT,
     };
     
@@ -180,10 +181,12 @@ export class LettaBot {
         console.log(`[Bot] Resuming session for agent ${this.store.agentId}`);
         console.log(`[Bot] LETTA_BASE_URL=${process.env.LETTA_BASE_URL}`);
         console.log(`[Bot] LETTA_API_KEY=${process.env.LETTA_API_KEY ? '(set)' : '(not set)'}`);
+        // Don't pass model when resuming - agent already has its model configured
         session = resumeSession(this.store.agentId, baseOptions);
       } else {
         console.log('[Bot] Creating new session');
-        session = createSession({ ...baseOptions, memory: loadMemoryBlocks(this.config.agentName) });
+        // Only pass model when creating a new agent
+        session = createSession({ ...baseOptions, model: this.config.model, memory: loadMemoryBlocks(this.config.agentName) });
       }
       console.log(`[Bot] Session object:`, Object.keys(session));
       console.log(`[Bot] Session initialized:`, (session as any).initialized);
@@ -259,12 +262,8 @@ export class LettaBot {
         adapter.sendTypingIndicator(msg.chatId).catch(() => {});
       }, 4000);
       
-      let streamCount = 0;
       try {
-        console.log('[Bot] Entering stream loop...');
         for await (const streamMsg of session.stream()) {
-          streamCount++;
-          console.log(`[Bot] Stream msg #${streamCount}: type=${streamMsg.type}, content=${streamMsg.type === 'assistant' ? streamMsg.content?.slice(0, 50) + '...' : '(n/a)'}`);
           if (streamMsg.type === 'assistant') {
             response += streamMsg.content;
             
@@ -309,7 +308,7 @@ export class LettaBot {
         clearInterval(typingInterval);
       }
       
-      console.log(`[Bot] Stream complete. Total messages: ${streamCount}, Response length: ${response.length}`);
+      console.log(`[Bot] Stream complete. Response length: ${response.length}`);
       console.log(`[Bot] Response preview: ${response.slice(0, 100)}...`);
       
       // Send final response
@@ -365,19 +364,21 @@ export class LettaBot {
     text: string,
     _context?: TriggerContext
   ): Promise<string> {
+    // Base options (model only for new agents)
     const baseOptions = {
       permissionMode: 'bypassPermissions' as const,
       allowedTools: this.config.allowedTools,
       cwd: this.config.workingDir,
-      model: this.config.model,
       systemPrompt: SYSTEM_PROMPT,
     };
     
     let session: Session;
     if (this.store.agentId) {
+      // Don't pass model when resuming - agent already has its model configured
       session = resumeSession(this.store.agentId, baseOptions);
     } else {
-      session = createSession({ ...baseOptions, memory: loadMemoryBlocks(this.config.agentName) });
+      // Only pass model when creating a new agent
+      session = createSession({ ...baseOptions, model: this.config.model, memory: loadMemoryBlocks(this.config.agentName) });
     }
     
     try {

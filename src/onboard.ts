@@ -35,7 +35,8 @@ interface OnboardConfig {
   telegram: { enabled: boolean; token?: string; dmPolicy?: 'pairing' | 'allowlist' | 'open'; allowedUsers?: string[] };
   slack: { enabled: boolean; appToken?: string; botToken?: string; allowedUsers?: string[] };
   whatsapp: { enabled: boolean; selfChat?: boolean; dmPolicy?: 'pairing' | 'allowlist' | 'open'; allowedUsers?: string[] };
-  signal: { enabled: boolean; phone?: string; dmPolicy?: 'pairing' | 'allowlist' | 'open'; allowedUsers?: string[] };
+  signal: { enabled: boolean; phone?: string; selfChat?: boolean; dmPolicy?: 'pairing' | 'allowlist' | 'open'; allowedUsers?: string[] };
+  discord: { enabled: boolean; token?: string; dmPolicy?: 'pairing' | 'allowlist' | 'open'; allowedUsers?: string[] };
   gmail: { enabled: boolean; account?: string };
   
   // Features
@@ -471,6 +472,7 @@ async function stepChannels(config: OnboardConfig, env: Record<string, string>):
   const channelOptions: Array<{ value: string; label: string; hint: string }> = [
     { value: 'telegram', label: 'Telegram', hint: 'Recommended - easiest to set up' },
     { value: 'slack', label: 'Slack', hint: 'Socket Mode app' },
+    { value: 'discord', label: 'Discord', hint: 'Bot token + Message Content intent' },
     { value: 'whatsapp', label: 'WhatsApp', hint: 'QR code pairing' },
     { 
       value: 'signal', 
@@ -479,13 +481,21 @@ async function stepChannels(config: OnboardConfig, env: Record<string, string>):
     },
   ];
   
-  // Don't pre-select any channels - let user explicitly choose
+  // Pre-select channels that are already enabled (preserves existing config)
+  const initialChannels: string[] = [];
+  if (config.telegram.enabled) initialChannels.push('telegram');
+  if (config.slack.enabled) initialChannels.push('slack');
+  if (config.discord.enabled) initialChannels.push('discord');
+  if (config.whatsapp.enabled) initialChannels.push('whatsapp');
+  if (config.signal.enabled) initialChannels.push('signal');
+  
   let channels: string[] = [];
   
   while (true) {
     const selectedChannels = await p.multiselect({
       message: 'Select channels (space to toggle, enter to confirm)',
       options: channelOptions,
+      initialValues: initialChannels,
       required: false,
     });
     if (p.isCancel(selectedChannels)) { p.cancel('Setup cancelled'); process.exit(0); }
@@ -509,6 +519,7 @@ async function stepChannels(config: OnboardConfig, env: Record<string, string>):
   // Update enabled states
   config.telegram.enabled = channels.includes('telegram');
   config.slack.enabled = channels.includes('slack');
+  config.discord.enabled = channels.includes('discord');
   config.whatsapp.enabled = channels.includes('whatsapp');
   
   // Handle Signal - warn if selected but not installed
@@ -650,6 +661,69 @@ async function stepChannels(config: OnboardConfig, env: Record<string, string>):
       }
     }
   }
+
+  if (config.discord.enabled) {
+    p.note(
+      '1. Go to discord.com/developers/applications\n' +
+      '2. Click "New Application" (or select existing)\n' +
+      '3. Go to "Bot" → Copy the Bot Token\n' +
+      '4. Enable "Message Content Intent" (under Privileged Gateway Intents)\n' +
+      '5. Go to "OAuth2" → "URL Generator"\n' +
+      '   • Scopes: bot\n' +
+      '   • Permissions: Send Messages, Read Message History, View Channels\n' +
+      '6. Copy the generated URL and open it to invite the bot to your server',
+      'Discord Setup'
+    );
+
+    const token = await p.text({
+      message: 'Discord Bot Token',
+      placeholder: 'Bot → Reset Token → Copy',
+      initialValue: config.discord.token || '',
+    });
+    if (!p.isCancel(token) && token) {
+      config.discord.token = token;
+      
+      // Extract application ID from token and show invite URL
+      // Token format: base64(app_id).timestamp.hmac
+      try {
+        const appId = Buffer.from(token.split('.')[0], 'base64').toString();
+        if (/^\d+$/.test(appId)) {
+          // permissions=68608 = Send Messages (2048) + Read Message History (65536) + View Channels (1024)
+          const inviteUrl = `https://discord.com/oauth2/authorize?client_id=${appId}&permissions=68608&scope=bot`;
+          p.log.info(`Invite URL: ${inviteUrl}`);
+          p.log.message('Open this URL in your browser to add the bot to your server.');
+        }
+      } catch {
+        // Token parsing failed, skip showing URL
+      }
+    }
+
+    const dmPolicy = await p.select({
+      message: 'Discord: Who can message the bot?',
+      options: [
+        { value: 'pairing', label: 'Pairing (recommended)', hint: 'Requires CLI approval' },
+        { value: 'allowlist', label: 'Allowlist only', hint: 'Specific user IDs' },
+        { value: 'open', label: 'Open', hint: 'Anyone (not recommended)' },
+      ],
+      initialValue: config.discord.dmPolicy || 'pairing',
+    });
+    if (!p.isCancel(dmPolicy)) {
+      config.discord.dmPolicy = dmPolicy as 'pairing' | 'allowlist' | 'open';
+
+      if (dmPolicy === 'pairing') {
+        p.log.info('Users will get a code. Approve with: lettabot pairing approve discord CODE');
+      } else if (dmPolicy === 'allowlist') {
+        const users = await p.text({
+          message: 'Allowed Discord user IDs (comma-separated)',
+          placeholder: '123456789012345678,987654321098765432',
+          initialValue: config.discord.allowedUsers?.join(',') || '',
+        });
+        if (!p.isCancel(users) && users) {
+          config.discord.allowedUsers = users.split(',').map(s => s.trim()).filter(Boolean);
+        }
+      }
+    }
+  }
   
   if (config.whatsapp.enabled) {
     p.note(
@@ -661,11 +735,15 @@ async function stepChannels(config: OnboardConfig, env: Record<string, string>):
       'WhatsApp'
     );
     
-    const selfChat = await p.confirm({
-      message: 'WhatsApp: Self-chat mode? (Message Yourself)',
-      initialValue: config.whatsapp.selfChat ?? false,
+    const selfChat = await p.select({
+      message: 'WhatsApp: Whose number is this?',
+      options: [
+        { value: 'dedicated', label: 'Dedicated bot number', hint: 'Responds to all incoming messages' },
+        { value: 'personal', label: 'My personal number', hint: 'Only responds to "Message Yourself" chat' },
+      ],
+      initialValue: config.whatsapp.selfChat ? 'personal' : 'dedicated',
     });
-    if (!p.isCancel(selfChat)) config.whatsapp.selfChat = selfChat;
+    if (!p.isCancel(selfChat)) config.whatsapp.selfChat = selfChat === 'personal';
     
     // Access control (important since WhatsApp has full account access)
     const dmPolicy = await p.select({
@@ -710,6 +788,16 @@ async function stepChannels(config: OnboardConfig, env: Record<string, string>):
       initialValue: config.signal.phone || '',
     });
     if (!p.isCancel(phone) && phone) config.signal.phone = phone;
+    
+    const selfChat = await p.select({
+      message: 'Signal: Whose number is this?',
+      options: [
+        { value: 'dedicated', label: 'Dedicated bot number', hint: 'Responds to all incoming messages' },
+        { value: 'personal', label: 'My personal number', hint: 'Only responds to "Note to Self" chat' },
+      ],
+      initialValue: config.signal.selfChat ? 'personal' : 'dedicated',
+    });
+    if (!p.isCancel(selfChat)) config.signal.selfChat = selfChat === 'personal';
     
     // Access control
     const dmPolicy = await p.select({
@@ -800,8 +888,9 @@ function showSummary(config: OnboardConfig): void {
   const channels: string[] = [];
   if (config.telegram.enabled) channels.push('Telegram');
   if (config.slack.enabled) channels.push('Slack');
+  if (config.discord.enabled) channels.push('Discord');
   if (config.whatsapp.enabled) channels.push(config.whatsapp.selfChat ? 'WhatsApp (self)' : 'WhatsApp');
-  if (config.signal.enabled) channels.push('Signal');
+  if (config.signal.enabled) channels.push(config.signal.selfChat ? 'Signal (self)' : 'Signal');
   lines.push(`Channels:  ${channels.length > 0 ? channels.join(', ') : 'None'}`);
   
   // Features
@@ -911,6 +1000,12 @@ export async function onboard(): Promise<void> {
       botToken: existingConfig.channels.slack?.botToken,
       allowedUsers: existingConfig.channels.slack?.allowedUsers,
     },
+    discord: {
+      enabled: existingConfig.channels.discord?.enabled || false,
+      token: existingConfig.channels.discord?.token,
+      dmPolicy: existingConfig.channels.discord?.dmPolicy,
+      allowedUsers: existingConfig.channels.discord?.allowedUsers,
+    },
     whatsapp: { 
       enabled: existingConfig.channels.whatsapp?.enabled || false,
       selfChat: existingConfig.channels.whatsapp?.selfChat,
@@ -919,6 +1014,7 @@ export async function onboard(): Promise<void> {
     signal: { 
       enabled: existingConfig.channels.signal?.enabled || false,
       phone: existingConfig.channels.signal?.phone,
+      selfChat: existingConfig.channels.signal?.selfChat,
       dmPolicy: existingConfig.channels.signal?.dmPolicy,
     },
     gmail: { enabled: false },
@@ -988,6 +1084,20 @@ export async function onboard(): Promise<void> {
     delete env.SLACK_BOT_TOKEN;
     delete env.SLACK_ALLOWED_USERS;
   }
+
+  if (config.discord.enabled && config.discord.token) {
+    env.DISCORD_BOT_TOKEN = config.discord.token;
+    if (config.discord.dmPolicy) env.DISCORD_DM_POLICY = config.discord.dmPolicy;
+    if (config.discord.allowedUsers?.length) {
+      env.DISCORD_ALLOWED_USERS = config.discord.allowedUsers.join(',');
+    } else {
+      delete env.DISCORD_ALLOWED_USERS;
+    }
+  } else {
+    delete env.DISCORD_BOT_TOKEN;
+    delete env.DISCORD_DM_POLICY;
+    delete env.DISCORD_ALLOWED_USERS;
+  }
   
   if (config.whatsapp.enabled) {
     env.WHATSAPP_ENABLED = 'true';
@@ -1008,6 +1118,9 @@ export async function onboard(): Promise<void> {
   
   if (config.signal.enabled && config.signal.phone) {
     env.SIGNAL_PHONE_NUMBER = config.signal.phone;
+    // Signal selfChat defaults to true, so only set env if explicitly false (dedicated number)
+    if (config.signal.selfChat === false) env.SIGNAL_SELF_CHAT_MODE = 'false';
+    else delete env.SIGNAL_SELF_CHAT_MODE;
     if (config.signal.dmPolicy) env.SIGNAL_DM_POLICY = config.signal.dmPolicy;
     if (config.signal.allowedUsers?.length) {
       env.SIGNAL_ALLOWED_USERS = config.signal.allowedUsers.join(',');
@@ -1016,6 +1129,7 @@ export async function onboard(): Promise<void> {
     }
   } else {
     delete env.SIGNAL_PHONE_NUMBER;
+    delete env.SIGNAL_SELF_CHAT_MODE;
     delete env.SIGNAL_DM_POLICY;
     delete env.SIGNAL_ALLOWED_USERS;
   }
@@ -1048,6 +1162,7 @@ export async function onboard(): Promise<void> {
     'Channels:',
     config.telegram.enabled ? `  ✓ Telegram (${formatAccess(config.telegram.dmPolicy, config.telegram.allowedUsers)})` : '  ✗ Telegram',
     config.slack.enabled ? `  ✓ Slack ${config.slack.allowedUsers?.length ? `(${config.slack.allowedUsers.length} allowed users)` : '(workspace access)'}` : '  ✗ Slack',
+    config.discord.enabled ? `  ✓ Discord (${formatAccess(config.discord.dmPolicy, config.discord.allowedUsers)})` : '  ✗ Discord',
     config.whatsapp.enabled ? `  ✓ WhatsApp (${formatAccess(config.whatsapp.dmPolicy, config.whatsapp.allowedUsers)})` : '  ✗ WhatsApp',
     config.signal.enabled ? `  ✓ Signal (${formatAccess(config.signal.dmPolicy, config.signal.allowedUsers)})` : '  ✗ Signal',
     '',
@@ -1087,6 +1202,14 @@ export async function onboard(): Promise<void> {
           allowedUsers: config.slack.allowedUsers,
         }
       } : {}),
+      ...(config.discord.enabled ? {
+        discord: {
+          enabled: true,
+          token: config.discord.token,
+          dmPolicy: config.discord.dmPolicy,
+          allowedUsers: config.discord.allowedUsers,
+        }
+      } : {}),
       ...(config.whatsapp.enabled ? {
         whatsapp: {
           enabled: true,
@@ -1099,6 +1222,7 @@ export async function onboard(): Promise<void> {
         signal: {
           enabled: true,
           phone: config.signal.phone,
+          selfChat: config.signal.selfChat,
           dmPolicy: config.signal.dmPolicy,
           allowedUsers: config.signal.allowedUsers,
         }
@@ -1154,5 +1278,5 @@ export async function onboard(): Promise<void> {
     p.log.success(`Agent ID saved: ${config.agentId} (${baseUrl})`);
   }
   
-  p.outro('🎉 Setup complete! Run `lettabot server` to start.');
+  p.outro('🎉 Setup complete! Run `npx lettabot server` to start.');
 }

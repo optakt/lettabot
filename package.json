@@ -6,7 +6,8 @@
   "bin": {
     "lettabot": "./dist/cli.js",
     "lettabot-schedule": "./dist/cron/cli.js",
-    "lettabot-message": "./dist/cli/message.js"
+    "lettabot-message": "./dist/cli/message.js",
+    "lettabot-react": "./dist/cli/react.js"
   },
   "scripts": {
     "setup": "tsx src/setup.ts",
@@ -57,6 +58,7 @@
   },
   "optionalDependencies": {
     "@slack/bolt": "^4.6.0",
-    "@whiskeysockets/baileys": "^6.7.21"
+    "@whiskeysockets/baileys": "^6.7.21",
+    "discord.js": "^14.18.0"
   }
 }
