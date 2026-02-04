@@ -28,6 +28,7 @@ import type {
   BaileysDisconnectReasonType,
   MessagesUpsertData,
 } from "./types.js";
+import type { GroupMetadata, WAMessageKey } from '@whiskeysockets/baileys';
 import type { CredsSaveQueue } from "../../utils/creds-queue.js";
 
 // Session management
@@ -39,6 +40,7 @@ import {
   checkInboundAccess,
   formatPairingMessage,
 } from "./inbound/access-control.js";
+import { applyGroupGating } from "./inbound/group-gating.js";
 
 // Outbound message handling
 import {
@@ -116,6 +118,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
   private sock: BaileysSocket | null = null;
   private DisconnectReason: BaileysDisconnectReasonType | null = null;
   private myJid: string = "";
+  private myLid: string = "";  // Linked Device ID (for Business/multi-device mentions)
   private myNumber: string = "";
 
   // LID mapping for message sending
@@ -469,6 +472,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
     this.sock = result.sock;
     this.DisconnectReason = result.DisconnectReason;
     this.myJid = result.myJid;
+    this.myLid = result.myLid;
     this.myNumber = result.myNumber;
     this.credsSaveQueue = result.credsQueue;
 
@@ -481,6 +485,16 @@ export class WhatsAppAdapter implements ChannelAdapter {
     // Start watchdog and crypto error handler
     this.startWatchdog();
     this.registerCryptoErrorHandler();
+  }
+
+  /**
+   * Get group metadata with caching (uses existing groupMetaCache).
+   */
+  private async getGroupMetadata(groupJid: string): Promise<GroupMetadata> {
+    if (!this.sock) {
+      throw new Error('Socket not connected');
+    }
+    return await this.sock.groupMetadata(groupJid);
   }
 
   /**
@@ -663,6 +677,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
           allowedUsers: this.config.allowedUsers,
           selfChatMode: this.config.selfChatMode,
           sock: this.sock,
+          // Group policy parameters
+          senderE164: extracted.senderE164,
+          groupPolicy: this.config.groupPolicy,
+          groupAllowFrom: this.config.groupAllowFrom,
         });
 
         if (!access.allowed) {
@@ -675,6 +693,46 @@ export class WhatsAppAdapter implements ChannelAdapter {
           continue;
         }
       }
+
+      // For Business accounts, extract LID from group participants if not already known
+      if (isGroup && !this.myLid && this.sock) {
+        try {
+          const groupMetadata = await this.getGroupMetadata(remoteJid);
+          const botParticipant = groupMetadata.participants?.find((p: any) =>
+            p.jid?.includes(this.myNumber)
+          );
+          if (botParticipant?.lid) {
+            this.myLid = botParticipant.lid;
+            console.log(`[WhatsApp] Discovered bot LID from group participants`);
+          }
+        } catch (err) {
+          console.warn('[WhatsApp] Could not fetch group metadata for LID extraction:', err);
+        }
+      }
+
+      // Apply group gating (mention detection + allowlist)
+      let wasMentioned = false;
+      if (isGroup) {
+        const gatingResult = applyGroupGating({
+          msg: extracted,
+          groupJid: remoteJid,
+          selfJid: this.myJid,
+          selfLid: this.myLid,
+          selfE164: this.myNumber,
+          groupsConfig: this.config.groups,
+          mentionPatterns: this.config.mentionPatterns,
+        });
+
+        if (!gatingResult.shouldProcess) {
+          console.log(`[WhatsApp] Group message skipped: ${gatingResult.reason}`);
+          continue;
+        }
+
+        wasMentioned = gatingResult.wasMentioned ?? false;
+      }
+
+      // Set mention status for agent context
+      extracted.wasMentioned = wasMentioned;
 
       // Skip auto-reply for history messages
       const isHistory = type === "append";
@@ -700,6 +758,10 @@ export class WhatsAppAdapter implements ChannelAdapter {
           text: body,
           timestamp: extracted.timestamp,
           isGroup,
+          groupName: extracted.groupSubject,
+          wasMentioned: extracted.wasMentioned,
+          replyToUser: extracted.replyContext?.senderE164,
+          attachments: extracted.attachments,
         });
       }
     }
