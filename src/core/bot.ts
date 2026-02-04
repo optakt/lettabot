@@ -14,6 +14,7 @@ import { installSkillsToAgent } from '../skills/loader.js';
 import { formatMessageEnvelope } from './formatter.js';
 import { loadMemoryBlocks } from './memory.js';
 import { SYSTEM_PROMPT } from './system-prompt.js';
+import { StreamWatchdog } from './stream-watchdog.js';
 
 export class LettaBot {
   private store: Store;
@@ -232,7 +233,6 @@ export class LettaBot {
           clearTimeout(timeoutId!);
         }
       };
-
       let initInfo;
       try {
         initInfo = await withTimeout(session.initialize(), 'Session initialize');
@@ -254,6 +254,10 @@ export class LettaBot {
           throw error;
         }
       }
+      if (initInfo.conversationId && initInfo.conversationId !== this.store.conversationId) {
+        this.store.conversationId = initInfo.conversationId;
+        console.log('[Bot] Saved conversation ID:', initInfo.conversationId);
+      }
 
       // Send message to agent with metadata envelope
       const formattedMessage = formatMessageEnvelope(msg);
@@ -271,6 +275,21 @@ export class LettaBot {
       let lastMsgType: string | null = null;
       let lastAssistantUuid: string | null = null;
       let sentAnyMessage = false;
+      
+      // Stream watchdog - abort if idle for too long
+      const watchdog = new StreamWatchdog({
+        onAbort: () => {
+          session.abort().catch((err) => {
+            console.error('[Bot] Stream abort failed:', err);
+          });
+          try {
+            session.close();
+          } catch (err) {
+            console.error('[Bot] Stream close failed:', err);
+          }
+        },
+      });
+      watchdog.start();
       
       // Helper to finalize and send current accumulated response
       const finalizeMessage = async () => {
@@ -302,6 +321,7 @@ export class LettaBot {
       try {
         for await (const streamMsg of session.stream()) {
           const msgUuid = (streamMsg as any).uuid;
+          watchdog.ping();
           
           // When message type changes, finalize the current message
           // This ensures different message types appear as separate bubbles
@@ -372,8 +392,10 @@ export class LettaBot {
             }
             break;
           }
+
         }
       } finally {
+        watchdog.stop();
         clearInterval(typingInterval);
       }
       
