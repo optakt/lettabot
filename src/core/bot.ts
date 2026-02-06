@@ -9,7 +9,7 @@ import { mkdirSync } from 'node:fs';
 import type { ChannelAdapter } from '../channels/types.js';
 import type { BotConfig, InboundMessage, TriggerContext } from './types.js';
 import { Store } from './store.js';
-import { updateAgentName, getPendingApprovals, rejectApproval, cancelRuns, disableAllToolApprovals, recoverOrphanedConversationApproval } from '../tools/letta-api.js';
+import { updateAgentName, getPendingApprovals, rejectApproval, cancelRuns, recoverOrphanedConversationApproval } from '../tools/letta-api.js';
 import { installSkillsToAgent } from '../skills/loader.js';
 import { formatMessageEnvelope, type SessionContextOptions } from './formatter.js';
 import { loadMemoryBlocks } from './memory.js';
@@ -157,7 +157,20 @@ export class LettaBot {
       );
       
       if (pendingApprovals.length === 0) {
-        // No pending approvals, reset counter and continue
+        // Standard check found nothing - try conversation-level inspection as fallback.
+        // This catches cases where agent.pending_approval is null but the conversation
+        // has an unresolved approval_request_message from a terminated run.
+        if (this.store.conversationId) {
+          const convResult = await recoverOrphanedConversationApproval(
+            this.store.agentId!,
+            this.store.conversationId
+          );
+          if (convResult.recovered) {
+            console.log(`[Bot] Conversation-level recovery succeeded: ${convResult.details}`);
+            return { recovered: true, shouldReset: false };
+          }
+        }
+        // No pending approvals found by either method
         this.store.resetRecoveryAttempts();
         return { recovered: false, shouldReset: false };
       }
@@ -189,10 +202,6 @@ export class LettaBot {
         console.log(`[Bot] Cancelling ${runIds.length} active run(s)...`);
         await cancelRuns(this.store.agentId, runIds);
       }
-      
-      // Disable tool approvals for the future (proactive fix)
-      console.log('[Bot] Disabling tool approval requirements...');
-      await disableAllToolApprovals(this.store.agentId);
       
       console.log('[Bot] Recovery completed');
       return { recovered: true, shouldReset: false };
@@ -466,11 +475,9 @@ export class LettaBot {
           receivedAnyData = true;
           msgTypeCounts[streamMsg.type] = (msgTypeCounts[streamMsg.type] || 0) + 1;
           
-          // Verbose logging: show every stream message type
-          if (process.env.DEBUG_STREAM) {
-            const preview = JSON.stringify(streamMsg).slice(0, 200);
-            console.log(`[Stream] type=${streamMsg.type} ${preview}`);
-          }
+          // Always log every stream message type for debugging approval issues
+          const preview = JSON.stringify(streamMsg).slice(0, 300);
+          console.log(`[Stream] type=${streamMsg.type} ${preview}`);
           
           // When message type changes, finalize the current message
           // This ensures different message types appear as separate bubbles
@@ -533,9 +540,25 @@ export class LettaBot {
             // Check for potential stuck state (empty result usually means pending approval or error)
             if (resultMsg.success && resultMsg.result === '' && !response.trim()) {
               console.error('[Bot] Warning: Agent returned empty result with no response.');
-              console.error('[Bot] This may indicate the agent is processing internally or encountered an issue.');
               console.error('[Bot] Agent ID:', this.store.agentId);
               console.error('[Bot] Conversation ID:', this.store.conversationId);
+              
+              // Attempt conversation-level recovery and retry once
+              if (!retried && this.store.agentId && this.store.conversationId) {
+                console.log('[Bot] Empty result - attempting orphaned approval recovery...');
+                session.close();
+                clearInterval(typingInterval);
+                watchdog.stop();
+                const convResult = await recoverOrphanedConversationApproval(
+                  this.store.agentId,
+                  this.store.conversationId
+                );
+                if (convResult.recovered) {
+                  console.log(`[Bot] Recovery succeeded (${convResult.details}), retrying message...`);
+                  return this.processMessage(msg, adapter, /* retried */ true);
+                }
+                console.warn(`[Bot] No orphaned approvals found: ${convResult.details}`);
+              }
             }
             
             // Save agent ID and conversation ID
@@ -608,14 +631,21 @@ export class LettaBot {
         } else {
           console.warn('[Bot] Stream received data but no assistant message');
           console.warn('[Bot] Message types received:', msgTypeCounts);
-          console.warn('[Bot] Agent:', this.store.agentId);
-          console.warn('[Bot] Conversation:', this.store.conversationId);
-          const convIdShort = this.store.conversationId?.slice(0, 8) || 'none';
-          await adapter.sendMessage({ 
-            chatId: msg.chatId, 
-            text: `(No response. Conversation: ${convIdShort}... Try: lettabot reset-conversation)`, 
-            threadId: msg.threadId 
-          });
+          // If the stream had tool activity, the agent was working and likely
+          // sent messages via tools (e.g. lettabot-message send). Don't alarm the user.
+          const hadToolActivity = (msgTypeCounts['tool_call'] || 0) > 0 || (msgTypeCounts['tool_result'] || 0) > 0;
+          if (hadToolActivity) {
+            console.log('[Bot] Agent had tool activity but no assistant message - likely sent via tool');
+          } else {
+            console.warn('[Bot] Agent:', this.store.agentId);
+            console.warn('[Bot] Conversation:', this.store.conversationId);
+            const convIdShort = this.store.conversationId?.slice(0, 8) || 'none';
+            await adapter.sendMessage({ 
+              chatId: msg.chatId, 
+              text: `(No response. Conversation: ${convIdShort}... Try: lettabot reset-conversation)`, 
+              threadId: msg.threadId 
+            });
+          }
         }
       }
       
