@@ -7,25 +7,17 @@
  *   lettabot model set <handle>  - Set model by handle
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { getDataDir } from '../utils/paths.js';
-import { getAgentModel, updateAgentModel, listModels } from '../tools/letta-api.js';
+import { getAgentModel, updateAgentModel } from '../tools/letta-api.js';
 import { buildModelOptions, handleModelSelection, getBillingTier } from '../utils/model-selection.js';
 import { isLettaCloudUrl } from '../utils/server.js';
+import { Store } from '../core/store.js';
 
 /**
- * Get agent ID from store file
+ * Get agent ID from store file (supports v1 and v2 formats)
  */
 function getAgentId(): string | null {
-  const storePath = resolve(getDataDir(), 'lettabot-agent.json');
-  if (!existsSync(storePath)) return null;
-  try {
-    const store = JSON.parse(readFileSync(storePath, 'utf-8'));
-    return store.agentId || null;
-  } catch {
-    return null;
-  }
+  const store = new Store();
+  return store.agentId;
 }
 
 /**
