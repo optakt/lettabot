@@ -9,6 +9,7 @@
 import type { ChannelAdapter } from '../channels/types.js';
 import type { InboundMessage, TriggerContext } from './types.js';
 import type { GroupBatcher } from './group-batcher.js';
+import type { StreamMsg } from './bot.js';
 
 export interface AgentSession {
   /** Register a channel adapter */
@@ -28,6 +29,9 @@ export interface AgentSession {
 
   /** Send a message to the agent (used by cron, heartbeat, polling) */
   sendToAgent(text: string, context?: TriggerContext): Promise<string>;
+
+  /** Stream a message to the agent, yielding chunks as they arrive */
+  streamToAgent(text: string, context?: TriggerContext): AsyncGenerator<StreamMsg>;
 
   /** Deliver a message/file to a specific channel */
   deliverToChannel(channelId: string, chatId: string, options: {
@@ -65,4 +69,18 @@ export interface MessageDeliverer {
     filePath?: string;
     kind?: 'image' | 'file';
   }): Promise<string | undefined>;
+}
+
+/**
+ * Extended interface for the API server.
+ * Supports both outbound delivery (to channels) and inbound chat (to agents).
+ * Satisfied by LettaGateway.
+ */
+export interface AgentRouter extends MessageDeliverer {
+  /** Send a message to a named agent and return the response text */
+  sendToAgent(agentName: string | undefined, text: string, context?: TriggerContext): Promise<string>;
+  /** Stream a message to a named agent, yielding chunks as they arrive */
+  streamToAgent(agentName: string | undefined, text: string, context?: TriggerContext): AsyncGenerator<StreamMsg>;
+  /** Get all registered agent names */
+  getAgentNames(): string[];
 }
