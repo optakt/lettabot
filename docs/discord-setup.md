@@ -149,6 +149,7 @@ Three modes are available:
 - **`open`** -- Bot responds to all messages in the channel (default)
 - **`listen`** -- Bot processes all messages for context/memory, but only responds when @mentioned
 - **`mention-only`** -- Bot completely ignores messages unless @mentioned (cheapest option -- messages are dropped at the adapter level before reaching the agent)
+- **`disabled`** -- Bot drops all messages in the channel unconditionally, even if @mentioned
 
 ### Configuring group modes
 
@@ -167,6 +168,8 @@ channels:
 
 Mode resolution priority: channel ID > guild ID > `*` wildcard > `open` (built-in default).
 
+To find channel and server IDs: enable **Developer Mode** in Discord settings (User Settings > Advanced > Developer Mode), then right-click any channel or server and select "Copy Channel ID" or "Copy Server ID".
+
 ### Channel allowlisting
 
 If you define `groups` with specific IDs and **do not** include a `*` wildcard, the bot will only be active in those listed channels. Messages in unlisted channels are silently dropped -- they never reach the agent and consume no tokens.
@@ -182,6 +185,26 @@ channels:
 ```
 
 This is the recommended approach when you want to restrict the bot to specific channels.
+
+### Per-group user filtering
+
+Use `allowedUsers` within a group entry to restrict which Discord users can trigger the bot. Messages from other users are silently dropped before reaching the agent.
+
+```yaml
+channels:
+  discord:
+    token: "your-bot-token"
+    groups:
+      "*":
+        mode: mention-only
+        allowedUsers:
+          - "YOUR_DISCORD_USER_ID"   # Only you can trigger the bot
+      "TESTING_CHANNEL":
+        mode: open
+        # No allowedUsers -- anyone can interact here
+```
+
+Find your Discord user ID: enable Developer Mode in Discord settings, then right-click your name and select "Copy User ID".
 
 ## Multiple Bots on Discord
 
