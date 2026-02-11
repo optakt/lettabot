@@ -113,14 +113,18 @@ function readConfigFromEnv(existingConfig: any): any {
   };
 }
 
-async function saveConfigFromEnv(config: any, configPath: string): Promise<void> {
+async function saveConfigFromEnv(config: any, configPath: string, existingConfig?: LettaBotConfig): Promise<void> {
   const { saveConfig } = await import('./config/index.js');
+  
+  // Resolve API server config from existing config (server.api is canonical, top-level api is fallback)
+  const existingApiConfig = existingConfig?.server?.api ?? existingConfig?.api;
   
   const lettabotConfig: Partial<LettaBotConfig> & Pick<LettaBotConfig, 'server'> = {
     server: {
       mode: isLettaApiUrl(config.baseUrl) ? 'api' : 'docker',
       baseUrl: config.baseUrl,
       apiKey: config.apiKey,
+      ...(existingApiConfig ? { api: existingApiConfig } : {}),
     },
     agents: [{
       name: config.agentName,
@@ -196,6 +200,8 @@ async function saveConfigFromEnv(config: any, configPath: string): Promise<void>
         },
       },
     }],
+    // Preserve unmanaged top-level fields from existing config
+    ...(existingConfig?.attachments ? { attachments: existingConfig.attachments } : {}),
   };
   
   saveConfig(lettabotConfig);
@@ -1372,8 +1378,8 @@ export async function onboard(options?: { nonInteractive?: boolean }): Promise<v
       process.exit(1);
     }
     
-    // Save config and exit
-    await saveConfigFromEnv(config, configPath);
+    // Save config and exit (pass existingConfig to preserve unmanaged fields like api/attachments)
+    await saveConfigFromEnv(config, configPath, existingConfig);
     console.log(`✅ Configuration saved to ${configPath}\n`);
     console.log('Run "lettabot server" to start the bot.');
     return;
@@ -1762,11 +1768,16 @@ export async function onboard(options?: { nonInteractive?: boolean }): Promise<v
   };
 
   // Convert to YAML config (multi-agent format)
+  // Resolve API server config from existing config (server.api is canonical, top-level api is fallback)
+  const existingApiConfig = existingConfig.server?.api ?? existingConfig.api;
+  
   const yamlConfig: Partial<LettaBotConfig> & Pick<LettaBotConfig, 'server'> = {
     server: {
       mode: isDockerAuthMethod(config.authMethod) ? 'docker' : 'api',
       ...(isDockerAuthMethod(config.authMethod) && config.baseUrl ? { baseUrl: config.baseUrl } : {}),
       ...(config.apiKey ? { apiKey: config.apiKey } : {}),
+      // Preserve API server config (port, host, CORS)
+      ...(existingApiConfig ? { api: existingApiConfig } : {}),
     },
     agents: [agentConfig],
     ...(config.transcription.enabled && config.transcription.apiKey ? {
@@ -1784,6 +1795,8 @@ export async function onboard(options?: { nonInteractive?: boolean }): Promise<v
         apiKey: p.apiKey,
       })),
     } : {}),
+    // Preserve unmanaged top-level fields from existing config
+    ...(existingConfig.attachments ? { attachments: existingConfig.attachments } : {}),
   };
   
   // Save YAML config (use project-local path)
