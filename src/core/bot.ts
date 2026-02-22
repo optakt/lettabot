@@ -261,6 +261,8 @@ export class LettaBot implements AgentSession {
       ],
       cwd: this.config.workingDir,
       tools: [createManageTodoTool(this.getTodoAgentKey())],
+      // Memory filesystem (context repository): true -> --memfs, false -> --no-memfs, undefined -> leave unchanged
+      ...(this.config.memfs !== undefined ? { memfs: this.config.memfs } : {}),
       // In bypassPermissions mode, canUseTool is only called for interactive
       // tools (AskUserQuestion, ExitPlanMode). When no callback is provided
       // (background triggers), the SDK auto-denies interactive tools.
@@ -398,6 +400,7 @@ export class LettaBot implements AgentSession {
       const newAgentId = await createAgent({
         systemPrompt: SYSTEM_PROMPT,
         memory: loadMemoryBlocks(this.config.agentName),
+        ...(this.config.memfs !== undefined ? { memfs: this.config.memfs } : {}),
       });
       const currentBaseUrl = process.env.LETTA_BASE_URL || 'https://api.letta.com';
       this.store.setAgent(newAgentId, currentBaseUrl);
