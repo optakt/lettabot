@@ -1084,6 +1084,8 @@ export class LettaBot implements AgentSession {
       let sawNonAssistantSinceLastUuid = false;
       let lastErrorDetail: { message: string; stopReason: string; apiError?: Record<string, unknown> } | null = null;
       let retryInfo: { attempt: number; maxAttempts: number; reason: string } | null = null;
+      let lastToolCallName: string | null = null;
+      const deniedToolCalls: Array<{ toolName: string; reason: string }> = [];
       const msgTypeCounts: Record<string, number> = {};
       
       const finalizeMessage = async () => {
@@ -1189,10 +1191,19 @@ export class LettaBot implements AgentSession {
           // Log meaningful events with structured summaries
           if (streamMsg.type === 'tool_call') {
             this.syncTodoToolCall(streamMsg);
+            lastToolCallName = streamMsg.toolName || null;
             console.log(`[Stream] >>> TOOL CALL: ${streamMsg.toolName || 'unknown'} (id: ${streamMsg.toolCallId?.slice(0, 12) || '?'})`);
             sawNonAssistantSinceLastUuid = true;
           } else if (streamMsg.type === 'tool_result') {
-            console.log(`[Stream] <<< TOOL RESULT: error=${streamMsg.isError}, len=${(streamMsg as any).content?.length || 0}`);
+            const resultContent = (streamMsg as any).content || streamMsg.result || '';
+            const isDenied = typeof resultContent === 'string' && resultContent.includes('request to call tool denied');
+            console.log(`[Stream] <<< TOOL RESULT: error=${streamMsg.isError}, denied=${isDenied}, len=${resultContent.length || 0}`);
+            if (isDenied) {
+              deniedToolCalls.push({
+                toolName: lastToolCallName || 'unknown',
+                reason: resultContent,
+              });
+            }
             sawNonAssistantSinceLastUuid = true;
           } else if (streamMsg.type === 'assistant' && lastMsgType !== 'assistant') {
             console.log(`[Bot] Generating response...`);
@@ -1484,6 +1495,19 @@ export class LettaBot implements AgentSession {
         }
       }
       
+      // Tool rejection follow-up: if any tool calls were denied during this turn,
+      // send a system message so the agent can inform the user and decide how to proceed.
+      if (deniedToolCalls.length > 0 && !needsContinuation) {
+        const toolNames = deniedToolCalls.map(d => d.toolName).join(', ');
+        const details = deniedToolCalls.map(d => `- ${d.toolName}: ${d.reason}`).join('\n');
+        console.log(`[Bot] ${deniedToolCalls.length} tool call(s) were denied: ${toolNames}`);
+        const followUpMsg: InboundMessage = {
+          ...msg,
+          text: `[SYSTEM] ${deniedToolCalls.length} tool call(s) were rejected during your last turn:\n${details}\n\nLet the user know that these tool(s) failed and explain what happened. Then decide: can you proceed without them, or do you need user input?`,
+        };
+        return this.processMessage(followUpMsg, adapter, retryAttempt, continuationAttempt);
+      }
+
       // Auto-continue: after delivering any buffered text, send a
       // continuation prompt so the agent can finish its truncated work.
       if (needsContinuation) {
