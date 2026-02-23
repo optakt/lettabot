@@ -1377,14 +1377,23 @@ export class LettaBot implements AgentSession {
           }
           sentAnyMessage = true;
           this.store.resetRecoveryAttempts();
-        } catch {
-          // Edit failed -- send as new message so user isn't left with truncated text
-          try {
-            await adapter.sendMessage({ chatId: msg.chatId, text: prefixedFinal, threadId: msg.threadId });
+        } catch (deliveryErr) {
+          const errMsg = deliveryErr instanceof Error ? deliveryErr.message : String(deliveryErr);
+          if (messageId) {
+            // We already have a message on screen (from streaming edits).
+            // Whether the final edit failed or content was "not modified", the user
+            // already has the text. Do NOT send a new message — that causes duplicates.
+            console.warn('[Bot] Final edit failed (message already visible):', errMsg);
             sentAnyMessage = true;
-            this.store.resetRecoveryAttempts();
-          } catch (retryError) {
-            console.error('[Bot] Retry send also failed:', retryError);
+          } else {
+            // No messageId means nothing was ever sent — retry as new message
+            try {
+              await adapter.sendMessage({ chatId: msg.chatId, text: prefixedFinal, threadId: msg.threadId });
+              sentAnyMessage = true;
+              this.store.resetRecoveryAttempts();
+            } catch (retryError) {
+              console.error('[Bot] Retry send also failed:', retryError);
+            }
           }
         }
       }
