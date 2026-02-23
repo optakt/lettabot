@@ -65,6 +65,9 @@ export interface AgentConfig {
     };
     memfs?: boolean;          // Enable memory filesystem (git-backed context repository) for SDK sessions
     maxToolCalls?: number;
+    maxRetries?: number;          // Max retry attempts for transient errors (default: 3)
+    retryBaseDelayMs?: number;    // Base delay for exponential backoff in ms (default: 5000)
+    retryMaxDelayMs?: number;     // Maximum delay cap for backoff in ms (default: 30000)
   };
   /** Polling config */
   polling?: PollingYamlConfig;
@@ -138,6 +141,9 @@ export interface LettaBotConfig {
     inlineImages?: boolean;   // Send images directly to the LLM (default: true). Set false to only send file paths.
     memfs?: boolean;          // Enable memory filesystem (git-backed context repository) for SDK sessions
     maxToolCalls?: number;  // Abort if agent calls this many tools in one turn (default: 100)
+    maxRetries?: number;          // Max retry attempts for transient errors (default: 3)
+    retryBaseDelayMs?: number;    // Base delay for exponential backoff in ms (default: 5000)
+    retryMaxDelayMs?: number;     // Maximum delay cap for backoff in ms (default: 30000)
   };
 
   // Polling - system-level background checks (Gmail, etc.)
